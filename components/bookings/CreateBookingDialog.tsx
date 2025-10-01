@@ -100,6 +100,22 @@ export function CreateBookingDialog({
                 )}
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Guest Category</Label>
+                <Select value={formData.guestCategory || 'regular'} onValueChange={(v) => setFormData(prev => ({...prev, guestCategory: v}))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="regular">Regular</SelectItem>
+                    <SelectItem value="vip">VIP</SelectItem>
+                    <SelectItem value="corporate">Corporate</SelectItem>
+                    <SelectItem value="travel_agent">Travel Agent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

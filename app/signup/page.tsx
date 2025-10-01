@@ -42,7 +42,7 @@ export default function SignupPage() {
         body: JSON.stringify(form)
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to create account")
+      if (!res.ok) throw new Error(data.error || "Failed to create account. Only Admin/Owner can create accounts.")
 
       toast({ title: "Account created", description: `Welcome! Role: ${data.role}` })
       router.push("/login")

@@ -81,9 +81,7 @@ export default function LoginPage() {
                   "Login"
                 )}
               </Button>
-              <Link href="/signup" className="w-full">
-                <Button type="button" variant="secondary" className="w-full">Sign up</Button>
-              </Link>
+              {/* Signup disabled */}
             </CardFooter>
           </form>
         </CardContent>

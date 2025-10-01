@@ -1,146 +1,203 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { activeWhatsAppService, type DaySettlementReport } from '@/lib/whatsapp-service'
-import { format, startOfDay, endOfDay, subDays } from 'date-fns'
 
-// This endpoint can be called by a cron job to automatically send day settlement reports
-export async function POST(request: NextRequest) {
-  try {
-    const { phoneNumber, date } = await request.json()
-    
-    if (!phoneNumber) {
-      return NextResponse.json(
-        { error: 'Phone number is required' },
-        { status: 400 }
-      )
-    }
-
-    // Use provided date or default to yesterday
-    const targetDate = date ? new Date(date) : subDays(new Date(), 1)
-    const start = startOfDay(targetDate)
-    const end = endOfDay(targetDate)
-
-    // Fetch bookings for the target date
-    const { data: bookings, error: bookingsError } = await supabase
-      .from("bookings")
-      .select(`
-        *,
-        guest:guests(name, email, phone),
-        staff:staff_id(name),
-        room:rooms(number, type, price)
-      `)
-      .gte("created_at", start.toISOString())
-      .lte("created_at", end.toISOString())
-      .order("created_at", { ascending: false })
-
-    if (bookingsError) {
-      throw new Error(`Failed to fetch bookings: ${bookingsError.message}`)
-    }
-
-    if (!bookings || bookings.length === 0) {
-      return NextResponse.json(
-        { message: 'No bookings found for the specified date' },
-        { status: 200 }
-      )
-    }
-
-    // Process day settlement data
-    const paymentMethods: Record<string, number> = {}
-    const staffPerformance: Record<string, number> = {}
-    let totalRevenue = 0
-    let walkinBookings = 0
-    let onlineBookings = 0
-
-    bookings.forEach(booking => {
-      const amount = booking.total_amount || 0
-      totalRevenue += amount
-      
-      // Count payment methods
-      const paymentMethod = booking.payment_method || 'Cash'
-      paymentMethods[paymentMethod] = (paymentMethods[paymentMethod] || 0) + amount
-      
-      // Count staff performance
-      const staffName = booking.staff?.name || 'Unknown'
-      staffPerformance[staffName] = (staffPerformance[staffName] || 0) + 1
-      
-      // Count booking types
-      if (booking.arrival_type === 'walk-in' || !booking.arrival_type) {
-        walkinBookings++
-      } else {
-        onlineBookings++
-      }
-    })
-
-    // Prepare day settlement report
-    const report: DaySettlementReport = {
-      date: format(targetDate, "MMMM dd, yyyy"),
-      totalBookings: bookings.length,
-      totalRevenue,
-      totalAdvance: bookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0),
-      totalRemaining: totalRevenue - bookings.reduce((sum, b) => sum + (b.advance_amount || 0), 0),
-      walkinBookings,
-      onlineBookings,
-      paymentMethods,
-      staffPerformance
-    }
-
-    // Send report via WhatsApp
-    const formattedPhone = activeWhatsAppService.formatPhoneNumber(phoneNumber)
-    const success = await activeWhatsAppService.sendDaySettlementReport(formattedPhone, report)
-
-    if (success) {
-      return NextResponse.json({
-        success: true,
-        message: 'Day settlement report sent successfully',
-        report: {
-          date: report.date,
-          totalBookings: report.totalBookings,
-          totalRevenue: report.totalRevenue
-        }
-      })
-    } else {
-      return NextResponse.json(
-        { error: 'Failed to send WhatsApp message' },
-        { status: 500 }
-      )
-    }
-
-  } catch (error) {
-    console.error('Error generating day settlement report:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// GET endpoint to manually trigger report generation (for testing)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const phoneNumber = searchParams.get('phone')
-    const date = searchParams.get('date')
-    
-    if (!phoneNumber) {
-      return NextResponse.json(
-        { error: 'Phone number is required as query parameter' },
-        { status: 400 }
-      )
+    const fromDate = searchParams.get('fromDate')
+    const toDate = searchParams.get('toDate')
+
+    if (!fromDate || !toDate) {
+      return NextResponse.json({ error: 'Missing date parameters' }, { status: 400 })
     }
 
-    // Call the POST method to generate and send the report
-    const response = await POST(new NextRequest(request.url, {
-      method: 'POST',
-      body: JSON.stringify({ phoneNumber, date })
-    }))
+    // Parse dates
+    const fromDateObj = new Date(fromDate.split('/').reverse().join('-'))
+    const toDateObj = new Date(toDate.split('/').reverse().join('-'))
+    
+    // Set time to end of day for toDate
+    toDateObj.setHours(23, 59, 59, 999)
 
-    return response
+    // Generate date range
+    const dates = []
+    const currentDate = new Date(fromDateObj)
+    while (currentDate <= toDateObj) {
+      dates.push(new Date(currentDate))
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
 
+    const settlementRecords: any[] = []
+
+    for (const date of dates) {
+      const startOfDay = new Date(date)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(date)
+      endOfDay.setHours(23, 59, 59, 999)
+
+      // Fetch bookings for this date
+      const { data: bookings, error: bookingsError } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          booking_number,
+          status,
+          created_at,
+          booking_rooms (
+            id,
+            room_rate,
+            room_total,
+            rooms (
+              id,
+              room_types (
+                name
+              )
+            )
+          ),
+          booking_payment_breakdown (
+            total_amount,
+            taxed_total_amount,
+            advance_cash,
+            advance_card,
+            advance_upi,
+            advance_bank,
+            receipt_cash,
+            receipt_card,
+            receipt_upi,
+            receipt_bank,
+            outstanding_amount
+          ),
+          payment_transactions (
+            amount,
+            payment_method,
+            transaction_type,
+            created_at
+          ),
+          charge_items (
+            total_amount,
+            created_at
+          )
+        `)
+        .gte('created_at', startOfDay.toISOString())
+        .lte('created_at', endOfDay.toISOString())
+
+      if (bookingsError) {
+        console.error('Error fetching bookings:', bookingsError)
+        continue
+      }
+
+      // Calculate totals for this date
+      let totalRevenue = 0
+      let roomRevenue = 0
+      let serviceRevenue = 0
+      let advanceCollections = 0
+      let outstandingAmount = 0
+      let cashCollections = 0
+      let cardCollections = 0
+      let upiCollections = 0
+      let bankTransferCollections = 0
+      let totalCollections = 0
+
+      bookings?.forEach((booking) => {
+        const paymentBreakdown = booking.booking_payment_breakdown
+        const chargeItems = booking.charge_items || []
+        
+        // Room revenue
+        const roomTotal = booking.booking_rooms?.reduce((sum, br) => sum + (br.room_total || 0), 0) || 0
+        roomRevenue += roomTotal
+        
+        // Service revenue (charges)
+        const serviceTotal = chargeItems.reduce((sum, item) => sum + (item.total_amount || 0), 0)
+        serviceRevenue += serviceTotal
+        
+        // Total revenue
+        totalRevenue += roomTotal + serviceTotal
+        
+        // Advance collections
+        if (paymentBreakdown) {
+          advanceCollections += (paymentBreakdown.advance_cash || 0) + 
+                              (paymentBreakdown.advance_card || 0) + 
+                              (paymentBreakdown.advance_upi || 0) + 
+                              (paymentBreakdown.advance_bank || 0)
+          
+          outstandingAmount += paymentBreakdown.outstanding_amount || 0
+        }
+        
+        // Payment collections
+        booking.payment_transactions?.forEach((transaction) => {
+          const amount = transaction.amount || 0
+          totalCollections += amount
+          
+          switch (transaction.payment_method) {
+            case 'cash':
+              cashCollections += amount
+              break
+            case 'card':
+              cardCollections += amount
+              break
+            case 'upi':
+              upiCollections += amount
+              break
+            case 'bank_transfer':
+              bankTransferCollections += amount
+              break
+          }
+        })
+      })
+
+      // Get room occupancy data
+      const { data: rooms, error: roomsError } = await supabase
+        .from('rooms')
+        .select('id, status')
+        .eq('status', 'occupied')
+
+      const totalRooms = 50 // Assuming 50 total rooms
+      const occupiedRooms = rooms?.length || 0
+      const occupancyPercentage = totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0
+      const averageRoomRate = occupiedRooms > 0 ? roomRevenue / occupiedRooms : 0
+
+      settlementRecords.push({
+        id: `settlement-${date.toISOString().split('T')[0]}`,
+        date: date.toISOString().split('T')[0],
+        total_revenue: totalRevenue,
+        room_revenue: roomRevenue,
+        service_revenue: serviceRevenue,
+        advance_collections: advanceCollections,
+        outstanding_amount: outstandingAmount,
+        cash_collections: cashCollections,
+        card_collections: cardCollections,
+        upi_collections: upiCollections,
+        bank_transfer_collections: bankTransferCollections,
+        total_collections: totalCollections,
+        occupancy_percentage: occupancyPercentage,
+        average_room_rate: averageRoomRate,
+        total_rooms: totalRooms,
+        occupied_rooms: occupiedRooms
+      })
+    }
+
+    // Calculate summary
+    const totalRevenue = settlementRecords.reduce((sum, r) => sum + r.total_revenue, 0)
+    const totalCollections = settlementRecords.reduce((sum, r) => sum + r.total_collections, 0)
+    const totalOutstanding = settlementRecords.reduce((sum, r) => sum + r.outstanding_amount, 0)
+    const averageOccupancy = settlementRecords.length > 0 
+      ? settlementRecords.reduce((sum, r) => sum + r.occupancy_percentage, 0) / settlementRecords.length 
+      : 0
+
+    const response = {
+      total: settlementRecords.length,
+      data: settlementRecords,
+      summary: {
+        total_revenue: totalRevenue,
+        total_collections: totalCollections,
+        total_outstanding: totalOutstanding,
+        average_occupancy: averageOccupancy,
+        period: `${fromDate} to ${toDate}`
+      }
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
-    console.error('Error in GET request:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Error in day-settlement API:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

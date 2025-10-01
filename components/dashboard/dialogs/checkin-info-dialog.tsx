@@ -260,19 +260,36 @@ export function CheckInInfoDialog({
               </div>
               
               <div className="grid grid-cols-3 gap-4 mb-4">              
-                <div>
-                  <Label>City</Label>
-                  <Input readOnly value={
-                    typeof guest?.address === 'object' && guest?.address?.city 
-                      ? guest.address.city 
-                      : (typeof guest?.address === 'string' ? guest.address : '')
-                  } />
-                </div>
+                {(() => {
+                  const g: any = guest as any
+                  let val = ''
+                  if (g) {
+                    val = g.city || g.address_city || (typeof g.address === 'object' && g.address?.city) || ''
+                    if (!val && typeof g.address === 'string') {
+                      try { const p = JSON.parse(g.address); val = p?.city || '' } catch {
+                        const parts = g.address.split(',').map((s: string) => s.trim()).filter(Boolean)
+                        if (parts.length >= 3) val = parts[parts.length - 3]
+                        else val = g.address
+                      }
+                    }
+                  }
+                  return val ? (
+                    <div>
+                      <Label>City</Label>
+                      <Input readOnly value={val} />
+                    </div>
+                  ) : null
+                })()}
                 
-                <div>
-                  <Label>ID No.</Label>
-                  <Input placeholder="Enter ID No" />
-                </div>
+                {(() => {
+                  const idv = (guest as any)?.id_number || (guest as any)?.identity_no || ''
+                  return idv ? (
+                    <div>
+                      <Label>ID No.</Label>
+                      <Input readOnly value={idv} />
+                    </div>
+                  ) : null
+                })()}
                 
                 <div>
                   <Label>Check-In Mode</Label>
@@ -286,6 +303,64 @@ export function CheckInInfoDialog({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Address Details */}
+              <div className="grid grid-cols-4 gap-4 mb-4">
+                {(() => {
+                  const g: any = guest as any
+                  let addr = ''
+                  if (g) {
+                    addr = g.street_address || (typeof g.address === 'object' && (g.address?.street_address || g.address?.address)) || ''
+                    if (!addr && typeof g.address === 'string') {
+                      try { const parsed = JSON.parse(g.address); addr = parsed?.street_address || parsed?.address || g.address } catch { addr = g.address }
+                    }
+                  }
+                  return addr ? (
+                    <div className="col-span-2">
+                      <Label>Address</Label>
+                      <Input readOnly value={addr} />
+                    </div>
+                  ) : null
+                })()}
+                {(() => {
+                  const g: any = guest as any
+                  let state = ''
+                  if (g) {
+                    state = g.state || (typeof g.address === 'object' && g.address?.state) || ''
+                    if (!state && typeof g.address === 'string') {
+                      try { const p = JSON.parse(g.address); state = p?.state || '' } catch {
+                        const parts = g.address?.split(',').map((s: string) => s.trim()).filter(Boolean) || []
+                        if (parts.length >= 2) state = parts[parts.length - 2]
+                      }
+                    }
+                  }
+                  return state ? (
+                    <div>
+                      <Label>State</Label>
+                      <Input readOnly value={state} />
+                    </div>
+                  ) : null
+                })()}
+                {(() => {
+                  const g: any = guest as any
+                  let country = ''
+                  if (g) {
+                    country = g.country || g.nationality || (typeof g.address === 'object' && g.address?.country) || ''
+                    if (!country && typeof g.address === 'string') {
+                      try { const p = JSON.parse(g.address); country = p?.country || '' } catch {
+                        const parts = g.address?.split(',').map((s: string) => s.trim()).filter(Boolean) || []
+                        if (parts.length >= 1) country = parts[parts.length - 1]
+                      }
+                    }
+                  }
+                  return country ? (
+                    <div>
+                      <Label>Country</Label>
+                      <Input readOnly value={country} />
+                    </div>
+                  ) : null
+                })()}
               </div>
             </div>
             
@@ -310,15 +385,35 @@ export function CheckInInfoDialog({
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border p-2">{room?.room_type?.name || ""}</td>
-                    <td className="border p-2">{room?.number || "101"}</td>
-                    <td className="border p-2">STD({booking?.payment_breakdown?.taxed_total_amount || booking?.payment_breakdown?.total_amount || room?.price || 1890}.00)</td>
-             
-                    <td className="border p-2">{guest?.first_name} {guest?.last_name}</td>
-                    <td className="border p-2">{guest?.phone}</td>
-           
-                    <td className="border p-2 text-center">0</td>
-                    <td className="border p-2 text-right">₹{booking?.payment_breakdown?.taxed_total_amount || booking?.payment_breakdown?.total_amount || room?.price || 1459.00}</td>
+                    {/* Room and booking room derived values */}
+                    {(() => {
+                      const br = booking?.booking_rooms?.[0] as any;
+                      const rate = br?.room_rate || 0;
+                      const nights = br?.expected_nights || 1;
+                      const netRate = br?.room_total || (rate * nights);
+                      const mealPlan = br?.meal_plan || 'EP';
+                      const adults = br?.adults || 0;
+                      const children = br?.children || 0;
+                      const extra = br?.extra_beds || 0;
+                      const male = (booking as any)?.guest?.gender === 'male' ? 1 : 0;
+                      const female = (booking as any)?.guest?.gender === 'female' ? 1 : 0;
+                      return (
+                        <>
+                          <td className="border p-2">{room?.room_type?.name || ''}</td>
+                          <td className="border p-2">{room?.number || ''}</td>
+                          <td className="border p-2">STD({rate.toFixed(2)})</td>
+                          <td className="border p-2">{mealPlan}</td>
+                          <td className="border p-2">{guest?.first_name} {guest?.last_name}</td>
+                          <td className="border p-2">{guest?.phone}</td>
+                          <td className="border p-2 text-center">{male}</td>
+                          <td className="border p-2 text-center">{female}</td>
+                          <td className="border p-2 text-center">{adults}</td>
+                          <td className="border p-2 text-center">{children}</td>
+                          <td className="border p-2 text-center">{extra}</td>
+                          <td className="border p-2 text-right">₹{netRate.toFixed(2)}</td>
+                        </>
+                      )
+                    })()}
                   </tr>
                 </tbody>
               </table>
@@ -344,24 +439,47 @@ export function CheckInInfoDialog({
                 
                 <div>
                   <Label>Check-in Date & Time</Label>
-                  <Input value={booking?.check_in ? format(new Date(booking.check_in), "dd-MM-yyyy HH:mm") : ""} readOnly />
+                  <Input
+                    value={(() => {
+                      const br = thisRoomBr as any
+                      const ci = br?.actual_check_in || br?.check_in_date || booking?.check_in
+                      return ci ? format(new Date(ci), "dd-MM-yyyy HH:mm") : ""
+                    })()}
+                    readOnly
+                  />
                 </div>
                 
                 {/* hope it works */}
                 <div>
                   <Label>No. of Days</Label>
-                  <Input type="number" value={
-                    booking?.check_in && booking?.expected_checkout ?
-                    Math.ceil((new Date(booking.expected_checkout).getTime() - new Date(booking.check_in).getTime()) / (1000 * 60 * 60 * 24)) 
-                    : "1"
-                  } readOnly />
+                  <Input
+                    type="number"
+                    value={(() => {
+                      // Prefer room-level expected_nights; fallback to date diff
+                      const br = thisRoomBr as any
+                      if (br?.expected_nights && br.expected_nights > 0) return br.expected_nights
+                      const ci = br?.check_in_date || booking?.check_in
+                      const co = br?.check_out_date || booking?.expected_checkout
+                      if (!ci || !co) return 1
+                      const ms = new Date(co).getTime() - new Date(ci).getTime()
+                      return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)))
+                    })()}
+                    readOnly
+                  />
                 </div>
               </div>
               
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
                   <Label>Check-out Date & Time</Label>
-                  <Input value={booking?.expected_checkout ? format(new Date(booking.expected_checkout), "dd-MM-yyyy HH:mm") : ""} readOnly />
+                  <Input
+                    value={(() => {
+                      const br = thisRoomBr as any
+                      const co = br?.actual_check_out || br?.check_out_date || booking?.expected_checkout
+                      return co ? format(new Date(co), "dd-MM-yyyy HH:mm") : ""
+                    })()}
+                    readOnly
+                  />
                 </div>
                 
                 <div>

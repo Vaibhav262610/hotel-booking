@@ -98,6 +98,7 @@ interface BookingFormData {
   planName: string;
   purpose: string;
   otaCompany: string;
+  guestCategory?: string;
 }
 
 interface TaxBreakdown {

@@ -364,12 +364,11 @@ export function BookingTable({
                                 d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                               />
                             </svg>
-                            {booking.actual_check_out
-                              ? format(
-                                  new Date(booking.actual_check_out),
-                                  "MMM dd, yyyy"
-                                )
-                              : "N/A"}
+                            {(() => {
+                              const br = booking.booking_rooms?.[0] as any
+                              const co = br?.actual_check_out || br?.check_out_date || booking.actual_check_out || booking.expected_checkout
+                              return co ? format(new Date(co), "MMM dd, yyyy") : "-"
+                            })()}
                           </span>
                           {booking.expected_checkout && (
                             <span className="text-[10px] text-gray-500 flex items-center gap-1">

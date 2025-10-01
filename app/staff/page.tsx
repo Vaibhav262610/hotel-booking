@@ -24,8 +24,8 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Edit, Trash2, Eye, Shield, Clock, Activity, Mail, UserPlus, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { staffService, staffLogService, Staff } from "@/lib/supabase"
-import { emailService } from "@/lib/email-service"
+import { staffService, staffLogService, Staff, supabase } from "@/lib/supabase"
+// import { emailService } from "@/lib/email-service"
 import { format } from "date-fns"
 
 interface StaffFormData {
@@ -120,7 +120,8 @@ export default function StaffPage() {
     notes: "",
   })
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null)
-  const [sendingEmail, setSendingEmail] = useState(false)
+  const [showPassword, setShowPassword] = useState<string | null>(null)
+  const [staffTempPasswords, setStaffTempPasswords] = useState<Record<string, string>>({})
 
   const { toast } = useToast()
 
@@ -187,50 +188,7 @@ export default function StaffPage() {
     return password
   }
 
-  // Send invitation email
-  const sendInvitationEmail = async (staffData: Staff, password: string) => {
-    try {
-      setSendingEmail(true)
-      
-      const response = await fetch('/api/email/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'staff-invitation',
-          data: {
-            name: staffData.name,
-            email: staffData.email,
-            password: password,
-            role: staffData.role,
-            department: staffData.department || "",
-            loginUrl: `${window.location.origin}/login`,
-          }
-        })
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        toast({
-          title: "Invitation Sent",
-          description: `Invitation email sent to ${staffData.email}`,
-        })
-      } else {
-        throw new Error(result.error || "Failed to send email")
-      }
-    } catch (error) {
-      console.error("Error sending email:", error)
-      toast({
-        title: "Email Error",
-        description: "Failed to send invitation email",
-        variant: "destructive",
-      })
-    } finally {
-      setSendingEmail(false)
-    }
-  }
+  // Email disabled: we will show the generated password in UI instead
 
   // Create staff member
   const handleCreateStaff = async (e: React.FormEvent) => {
@@ -239,28 +197,42 @@ export default function StaffPage() {
     try {
       const password = generatePassword()
       
-      // Create staff member
-      const { data: newStaff, error } = await supabase
-        .from("staff")
-        .insert({
+      // Create staff via API to ensure auth user + staff profile
+      const res = await fetch('/api/staff/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
           role: formData.role,
           department: formData.department,
           permissions: formData.permissions,
-          status: "active",
+          password
         })
-        .select()
-        .single()
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Failed to create staff')
+      const newStaff = payload.staff
+      const returnedPassword = payload.password
 
-      if (error) throw error
+      // Show password inline (email disabled)
+      setShowPassword(password)
 
-      // Log the action
-      await staffLogService.logStaffAction(newStaff.id, "Created new staff member", `Created staff member: ${formData.name} (${formData.email})`)
+      // Store password for viewing in Staff Details (in-memory only)
+      if (newStaff?.id && returnedPassword) {
+        setStaffTempPasswords(prev => ({ ...prev, [newStaff.id]: returnedPassword }))
+      }
 
-      // Send invitation email
-      await sendInvitationEmail(newStaff, password)
+      // Log the action after successful creation (with delay to ensure DB commit)
+      try {
+        // Small delay to ensure the staff record is fully committed
+        await new Promise(resolve => setTimeout(resolve, 100))
+        await staffLogService.logStaffAction(newStaff.id, "Created new staff member", `Created staff member: ${formData.name} (${formData.email})`)
+      } catch (logError) {
+        console.warn("Failed to log staff action:", logError)
+        // Don't fail the entire operation if logging fails
+      }
 
       // Reset form and close dialog
       setFormData({
@@ -312,8 +284,13 @@ export default function StaffPage() {
 
       if (error) throw error
 
-      // Log the action
-      await staffLogService.logStaffAction(selectedStaff.id, "Updated staff member", `Updated staff member: ${formData.name} (${formData.email})`)
+      // Log the action after successful update
+      try {
+        await staffLogService.logStaffAction(selectedStaff.id, "Updated staff member", `Updated staff member: ${formData.name} (${formData.email})`)
+      } catch (logError) {
+        console.warn("Failed to log staff action:", logError)
+        // Don't fail the entire operation if logging fails
+      }
 
       // Reset form and close dialog
       setFormData({
@@ -357,8 +334,13 @@ export default function StaffPage() {
 
       if (error) throw error
 
-      // Log the action
-      await staffLogService.logStaffAction(selectedStaff.id, "Deleted staff member", `Deleted staff member: ${selectedStaff.name} (${selectedStaff.email})`)
+      // Log the action after successful deletion
+      try {
+        await staffLogService.logStaffAction(selectedStaff.id, "Deleted staff member", `Deleted staff member: ${selectedStaff.name} (${selectedStaff.email})`)
+      } catch (logError) {
+        console.warn("Failed to log staff action:", logError)
+        // Don't fail the entire operation if logging fails
+      }
 
       setSelectedStaff(null)
       setIsDeleteDialogOpen(false)
@@ -392,8 +374,13 @@ export default function StaffPage() {
 
       if (error) throw error
 
-      // Log the action
-      await staffLogService.logStaffAction(staffId, `Changed staff status to ${newStatus}`, `Staff status changed to ${newStatus}`)
+      // Log the action after successful status change
+      try {
+        await staffLogService.logStaffAction(staffId, `Changed staff status to ${newStatus}`, `Staff status changed to ${newStatus}`)
+      } catch (logError) {
+        console.warn("Failed to log staff action:", logError)
+        // Don't fail the entire operation if logging fails
+      }
 
       // Refresh data
       await fetchStaffData()
@@ -567,11 +554,18 @@ export default function StaffPage() {
                   <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={sendingEmail}>
-                    {sendingEmail ? "Sending Invitation..." : "Add Staff Member"}
+                  <Button type="submit">
+                    Add Staff Member
                   </Button>
                 </DialogFooter>
               </form>
+              {showPassword && (
+                <div className="mt-4 p-3 rounded border bg-yellow-50 text-yellow-900">
+                  <div className="font-medium">Temporary password generated:</div>
+                  <div className="font-mono text-lg">{showPassword}</div>
+                  <div className="text-sm mt-1">Share this with the staff member. They should change it after first login.</div>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
         </div>
@@ -934,6 +928,32 @@ export default function StaffPage() {
                       {roleConfig[selectedStaff.role as keyof typeof roleConfig]?.label || selectedStaff.role}
                     </Badge>
                   </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Temporary Password</Label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="font-mono text-sm text-foreground">
+                      {staffTempPasswords[selectedStaff.id] || "Not available"}
+                    </span>
+                    {staffTempPasswords[selectedStaff.id] ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-7 px-2"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(staffTempPasswords[selectedStaff.id])
+                            toast({ title: "Copied", description: "Password copied to clipboard" })
+                          } catch (e) {
+                            toast({ title: "Copy failed", description: "Could not copy password", variant: "destructive" })
+                          }
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Shown only if this admin created the account in this session.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

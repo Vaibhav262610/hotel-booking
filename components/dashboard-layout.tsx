@@ -34,18 +34,28 @@ import {
   LogOut as CheckoutIcon,
 } from "lucide-react"
 import UserMenu from "@/components/user-menu"
+import { useSession } from "next-auth/react"
+import { 
+  isAdmin, 
+  isFrontOfficeStaff, 
+  isHousekeepingStaff, 
+  canAccessReports, 
+  canAccessStaffManagement, 
+  canAccessSettings, 
+  canAccessMasterData 
+} from "@/lib/auth-utils"
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: Home },
-  { name: "Rooms", href: "/rooms", icon: Bed },
-  { name: "Bookings", href: "/bookings", icon: Calendar },
-  { name: "Reservations", href: "/reservations", icon: CalendarCheck },
-  { name: "Checkout", href: "/checkout", icon: CheckoutIcon },
-  { name: "Guests", href: "/guests", icon: Users },
-  { name: "Housekeeping", href: "/housekeeping", icon: ClipboardCheck },
-  { name: "Staff", href: "/staff", icon: Users },
-  { name: "Noor AI", href: "/noor-ai", icon: Sparkles },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Dashboard", href: "/", icon: Home, roles: ["Admin", "Owner", "Front Office Staff", "Housekeeping Manager", "Housekeeping Staff"] },
+  { name: "Rooms", href: "/rooms", icon: Bed, roles: ["Admin", "Owner", "Front Office Staff"] },
+  { name: "Bookings", href: "/bookings", icon: Calendar, roles: ["Admin", "Owner", "Front Office Staff", "Housekeeping Manager", "Housekeeping Staff"] },
+  { name: "Reservations", href: "/reservations", icon: CalendarCheck, roles: ["Admin", "Owner", "Front Office Staff"] },
+  { name: "Checkout", href: "/checkout", icon: CheckoutIcon, roles: ["Admin", "Owner", "Front Office Staff"] },
+  { name: "Guests", href: "/guests", icon: Users, roles: ["Admin", "Owner", "Front Office Staff", "Housekeeping Manager", "Housekeeping Staff"] },
+  { name: "Housekeeping", href: "/housekeeping", icon: ClipboardCheck, roles: ["Admin", "Owner", "Housekeeping Manager", "Housekeeping Staff"] },
+  { name: "Staff", href: "/staff", icon: Users, roles: ["Admin", "Owner"] },
+  { name: "Noor AI", href: "/noor-ai", icon: Sparkles, roles: ["Admin", "Owner", "Front Office Staff", "Housekeeping Manager", "Housekeeping Staff"] },
+  { name: "Settings", href: "/settings", icon: Settings, roles: ["Admin", "Owner"] },
 ]
 
 interface DashboardLayoutProps {
@@ -56,10 +66,17 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { theme, toggleTheme, mounted } = useThemePersistence()
+  const { data: session } = useSession()
   const [masterOpen, setMasterOpen] = useState(true)
   // Added states for reports section
   const [nonRevenueOpen, setNonRevenueOpen] = useState(true)
   const [revenueOpen, setRevenueOpen] = useState(false)
+
+  // Filter navigation based on user role
+  const userRole = session?.user?.role
+  const filteredNavigation = navigation.filter(item => 
+    item.roles.includes(userRole || '')
+  )
 
   // Report items with their corresponding URL parameters
   const nonRevenueReports = [
@@ -106,7 +123,7 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {navigation.map((item) => (
+                  {filteredNavigation.map((item) => (
                     <li key={item.name}>
                       <Link
                         href={item.href}
@@ -122,170 +139,8 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
                       </Link>
                     </li>
                   ))}
-                  {/* Master dropdown */}
-                  <li className="mt-2">
-                    <button
-                      onClick={() => setMasterOpen((v) => !v)}
-                      className={cn(
-                        "w-full group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
-                        "text-muted-foreground hover:text-foreground hover:bg-muted",
-                      )}
-                    >
-                      <User className="h-6 w-6 shrink-0" />
-                      Master
-                      {masterOpen ? (
-                        <ChevronDown className="ml-auto h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="ml-auto h-4 w-4" />
-                      )}
-                    </button>
-                    {masterOpen && (
-                      <ul className="mt-1 ml-9 space-y-1">
-                        {[
-                          { name: "Request Autopost", href: "/master/request-autopost" },
-                          { name: "Guest Master", href: "/master/guests" },
-                          { name: "Guest Company Master", href: "/master/guest-companies" },
-                          { name: "OTA Master", href: "/master/ota" },
-                          { name: "Amenities Master", href: "/master/amenities" },
-                          { name: "Blank GRC Form", href: "/master/blank-grc" },
-                          { name: "News Paper Master", href: "/master/news-paper" },
-                          { name: "Business Source Master", href: "/master/business-source" },
-                        ].map((sub) => (
-                          <li key={sub.name}>
-                            <Link
-                              href={sub.href}
-                              className={cn(
-                                pathname === sub.href
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                                "block rounded-md px-2 py-1 text-sm",
-                              )}
-                            >
-                              {sub.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-
-                  {/* Reports section - Non Revenue and Revenue groups */}
-                  <li className="mt-4">
-                    <div className="px-2 pb-1 text-xs font-semibold text-muted-foreground tracking-wider">
-                      REPORTS
-                    </div>
-                    {/* Non Revenue Report */}
-                    <button
-                      onClick={() => setNonRevenueOpen((v) => !v)}
-                      className={cn(
-                        "w-full group mt-1 flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
-                        "text-muted-foreground hover:text-foreground hover:bg-muted",
-                      )}
-                    >
-                      <LayoutGrid className="h-6 w-6 shrink-0" />
-                      Non Revenue Report
-                      {nonRevenueOpen ? (
-                        <ChevronDown className="ml-auto h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="ml-auto h-4 w-4" />
-                      )}
-                    </button>
-                    {nonRevenueOpen && (
-                      <ul className="mt-1 ml-9 space-y-1">
-                        {nonRevenueReports.map((report) => (
-                          <li key={report.type}>
-                            <Link
-                              href={`/reports?type=${report.type}`}
-                              className={cn(
-                                pathname === "/reports" && searchParams.get('type') === report.type
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                                "block rounded-md px-2 py-1 text-sm",
-                              )}
-                            >
-                              {report.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {/* Revenue Report */}
-                    <button
-                      onClick={() => setRevenueOpen((v) => !v)}
-                      className={cn(
-                        "w-full group mt-2 flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
-                        "text-muted-foreground hover:text-foreground hover:bg-muted",
-                      )}
-                    >
-                      <BarChart3 className="h-6 w-6 shrink-0" />
-                      Revenue Report
-                      {revenueOpen ? (
-                        <ChevronDown className="ml-auto h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="ml-auto h-4 w-4" />
-                      )}
-                    </button>
-                    {revenueOpen && (
-                      <ul className="mt-1 ml-9 space-y-1">
-                        {revenueReports.map((report) => (
-                          <li key={report.type}>
-                            <Link
-                              href={`/reports?type=${report.type}`}
-                              className={cn(
-                                pathname === "/reports" && searchParams.get('type') === report.type
-                                  ? "bg-primary text-primary-foreground"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                                "block rounded-md px-2 py-1 text-sm",
-                              )}
-                            >
-                              {report.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      </div>
-
-      {/* Mobile Sidebar */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="outline" size="icon" className="lg:hidden fixed top-4 left-4 z-40 bg-transparent">
-            <Menu className="h-4 w-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-72">
-          <div className="flex h-16 shrink-0 items-center">
-            <h1 className="text-xl font-bold">Hotel Manager</h1>
-          </div>
-          <ScrollArea className="flex-1">
-            <nav className="flex flex-1 flex-col">
-              <ul role="list" className="flex flex-1 flex-col gap-y-7">
-                <li>
-                  <ul role="list" className="-mx-2 space-y-1">
-                    {navigation.map((item) => (
-                      <li key={item.name}>
-                        <Link
-                          href={item.href}
-                          className={cn(
-                            pathname === item.href
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                            "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
-                          )}
-                        >
-                          <item.icon className="h-6 w-6 shrink-0" aria-hidden="true" />
-                          {item.name}
-                        </Link>
-                      </li>
-                    ))}
-                    {/* Master dropdown - mobile */}
+                  {/* Master dropdown - only show for Admin/Owner */}
+                  {canAccessMasterData(userRole) && (
                     <li className="mt-2">
                       <button
                         onClick={() => setMasterOpen((v) => !v)}
@@ -331,8 +186,10 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
                         </ul>
                       )}
                     </li>
+                  )}
 
-                    {/* Reports section - mobile */}
+                  {/* Reports section - only show for Admin/Owner */}
+                  {canAccessReports(userRole) && (
                     <li className="mt-4">
                       <div className="px-2 pb-1 text-xs font-semibold text-muted-foreground tracking-wider">
                         REPORTS
@@ -409,6 +266,174 @@ function DashboardLayoutContent({ children }: DashboardLayoutProps) {
                         </ul>
                       )}
                     </li>
+                  )}
+                </ul>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+
+      {/* Mobile Sidebar */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="icon" className="lg:hidden fixed top-4 left-4 z-40 bg-transparent">
+            <Menu className="h-4 w-4" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-72">
+          <div className="flex h-16 shrink-0 items-center">
+            <h1 className="text-xl font-bold">Hotel Manager</h1>
+          </div>
+          <ScrollArea className="flex-1">
+            <nav className="flex flex-1 flex-col">
+              <ul role="list" className="flex flex-1 flex-col gap-y-7">
+                <li>
+                  <ul role="list" className="-mx-2 space-y-1">
+                    {filteredNavigation.map((item) => (
+                      <li key={item.name}>
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            pathname === item.href
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                            "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
+                          )}
+                        >
+                          <item.icon className="h-6 w-6 shrink-0" aria-hidden="true" />
+                          {item.name}
+                        </Link>
+                      </li>
+                    ))}
+                    {/* Master dropdown - mobile - only show for Admin/Owner */}
+                    {canAccessMasterData(userRole) && (
+                      <li className="mt-2">
+                        <button
+                          onClick={() => setMasterOpen((v) => !v)}
+                          className={cn(
+                            "w-full group flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
+                            "text-muted-foreground hover:text-foreground hover:bg-muted",
+                          )}
+                        >
+                          <User className="h-6 w-6 shrink-0" />
+                          Master
+                          {masterOpen ? (
+                            <ChevronDown className="ml-auto h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="ml-auto h-4 w-4" />
+                          )}
+                        </button>
+                        {masterOpen && (
+                          <ul className="mt-1 ml-9 space-y-1">
+                            {[
+                              { name: "Request Autopost", href: "/master/request-autopost" },
+                              { name: "Guest Master", href: "/master/guests" },
+                              { name: "Guest Company Master", href: "/master/guest-companies" },
+                              { name: "OTA Master", href: "/master/ota" },
+                              { name: "Amenities Master", href: "/master/amenities" },
+                              { name: "Blank GRC Form", href: "/master/blank-grc" },
+                              { name: "News Paper Master", href: "/master/news-paper" },
+                              { name: "Business Source Master", href: "/master/business-source" },
+                            ].map((sub) => (
+                              <li key={sub.name}>
+                                <Link
+                                  href={sub.href}
+                                  className={cn(
+                                    pathname === sub.href
+                                      ? "bg-primary text-primary-foreground"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                                    "block rounded-md px-2 py-1 text-sm",
+                                  )}
+                                >
+                                  {sub.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    )}
+
+                    {/* Reports section - mobile - only show for Admin/Owner */}
+                    {canAccessReports(userRole) && (
+                      <li className="mt-4">
+                        <div className="px-2 pb-1 text-xs font-semibold text-muted-foreground tracking-wider">
+                          REPORTS
+                        </div>
+                        {/* Non Revenue Report */}
+                        <button
+                          onClick={() => setNonRevenueOpen((v) => !v)}
+                          className={cn(
+                            "w-full group mt-1 flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
+                            "text-muted-foreground hover:text-foreground hover:bg-muted",
+                          )}
+                        >
+                          <LayoutGrid className="h-6 w-6 shrink-0" />
+                          Non Revenue Report
+                          {nonRevenueOpen ? (
+                            <ChevronDown className="ml-auto h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="ml-auto h-4 w-4" />
+                          )}
+                        </button>
+                        {nonRevenueOpen && (
+                          <ul className="mt-1 ml-9 space-y-1">
+                            {nonRevenueReports.map((report) => (
+                              <li key={report.type}>
+                                <Link
+                                  href={`/reports?type=${report.type}`}
+                                  className={cn(
+                                    pathname === "/reports" && searchParams.get('type') === report.type
+                                      ? "bg-primary text-primary-foreground"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                                    "block rounded-md px-2 py-1 text-sm",
+                                  )}
+                                >
+                                  {report.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {/* Revenue Report */}
+                        <button
+                          onClick={() => setRevenueOpen((v) => !v)}
+                          className={cn(
+                            "w-full group mt-2 flex items-center gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
+                            "text-muted-foreground hover:text-foreground hover:bg-muted",
+                          )}
+                        >
+                          <BarChart3 className="h-6 w-6 shrink-0" />
+                          Revenue Report
+                          {revenueOpen ? (
+                            <ChevronDown className="ml-auto h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="ml-auto h-4 w-4" />
+                          )}
+                        </button>
+                        {revenueOpen && (
+                          <ul className="mt-1 ml-9 space-y-1">
+                            {revenueReports.map((report) => (
+                              <li key={report.type}>
+                                <Link
+                                  href={`/reports?type=${report.type}`}
+                                  className={cn(
+                                    pathname === "/reports" && searchParams.get('type') === report.type
+                                      ? "bg-primary text-primary-foreground"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                                    "block rounded-md px-2 py-1 text-sm",
+                                  )}
+                                >
+                                  {report.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    )}
                   </ul>
                 </li>
               </ul>

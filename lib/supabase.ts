@@ -2679,7 +2679,7 @@ export const bookingService = {
           email: bookingData.guestEmail,
           phone: bookingData.guestPhone,
           status: 'active',
-          guest_category: 'regular',
+          guest_category: (bookingData as any).guestCategory || 'regular',
           loyalty_points: 0,
           total_stays: 0,
           total_spent: 0
@@ -4724,6 +4724,18 @@ export const staffLogService = {
     return data as StaffLog[]
   },
 
+  async logStaffAction(staffId: string, action: string, details?: string) {
+    const { error } = await supabase
+      .from('staff_logs')
+      .insert({
+        staff_id: staffId,
+        action,
+        details: details || null
+      })
+    if (error) throw new Error(error.message || 'Failed to log staff action')
+    return true
+  },
+
   async deleteTask(taskId: string) {
     const { error } = await supabase
       .from('housekeeping_tasks')
@@ -4765,6 +4777,13 @@ export const guestService = {
         guest_category: g.guest_category || 'regular',
         status: g.status || 'active'
       }
+    })
+
+    // Deduplicate by phone/email; compute repeat counts across raw rows (not deduped) to track repeats
+    const byKeyCounts = new Map<string, number>()
+    guestsRaw.forEach((g: any) => {
+      const key = (g.phone && String(g.phone).trim()) || (g.email && String(g.email).toLowerCase().trim()) || g.id
+      byKeyCounts.set(key, (byKeyCounts.get(key) || 0) + 1)
     })
 
     // Deduplicate by phone (primary) or email (secondary). Keep the most recent record.
@@ -4818,6 +4837,14 @@ export const guestService = {
         }
       })
     }
+
+    // Tag repeat and VIP based on history
+    deduped.forEach((g: any) => {
+      const key = (g.phone && String(g.phone).trim()) || (g.email && String(g.email).toLowerCase().trim()) || g.id
+      const repeatCount = byKeyCounts.get(key) || 0
+      g.total_stays = Math.max(g.total_stays || 0, repeatCount)
+      if (!g.guest_category && g.total_spent >= 10000) g.guest_category = 'vip'
+    })
 
     return deduped as Guest[]
   },
