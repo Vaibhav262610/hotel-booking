@@ -25,8 +25,8 @@ export default withAuth(
         const isAuthed = !!token
         const role = (token as any)?.role || ''
 
-        // Publicly accessible routes (allow non-authed): login only
-        if (path.startsWith('/login')) return true
+        // Publicly accessible routes (allow non-authed): login, user creation, and table management
+        if (path.startsWith('/login') || path.startsWith('/create-users') || path.startsWith('/hotel-tables')) return true
 
         // Disable public signup entirely; redirect handled above
         if (path.startsWith('/signup') || path.startsWith('/api/auth/signup')) {
@@ -108,8 +108,9 @@ export const config = {
     "/rooms/:path*",
     "/reservations/:path*",
     "/noor-ai/:path*",
-    "/staff-logs/:path*"
-    // Note: /login and /signup are excluded to allow authentication
+    "/staff-logs/:path*",
+    "/checkout/:path*"
+    // Note: /login, /hotel-selection are excluded to allow authentication
   ],
 }
 

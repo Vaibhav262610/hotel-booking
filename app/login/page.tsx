@@ -3,12 +3,11 @@
 import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
-import { useToast } from "@/components/ui/use-toast"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { useToast } from "@/hooks/use-toast"
 import { Loader2 } from "lucide-react"
 
 export default function LoginPage() {
@@ -16,6 +15,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [hotelId, setHotelId] = useState("")
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -24,18 +24,30 @@ export default function LoginPage() {
       toast({ title: "Email and password required", variant: "destructive" })
       return
     }
+    if (!hotelId) {
+      toast({ title: "Hotel ID required", description: "Please select hotel_001 or hotel_002", variant: "destructive" })
+      return
+    }
+    
     setLoading(true)
     try {
-      const result = await signIn("credentials", { email, password, redirect: false })
+      const result = await signIn("credentials", { 
+        email, 
+        password, 
+        hotelId,
+        redirect: false 
+      })
       if (!result || result.error) {
         throw new Error(result?.error || "Login failed")
       }
       
-      // Navigate to dashboard and keep loading state until navigation completes
-      router.replace("/")
+      // Store hotel context
+      localStorage.setItem('selectedHotel', JSON.stringify({
+        hotelId,
+        name: `Hotel ${hotelId.replace('hotel', '')}`
+      }))
       
-      // Keep loading state active - it will be reset when component unmounts
-      // or when user navigates away from login page
+      router.replace("/")
     } catch (err: any) {
       toast({ title: "Login error", description: err.message, variant: "destructive" })
       setLoading(false)
@@ -46,48 +58,57 @@ export default function LoginPage() {
     <div className="flex min-h-[80vh] items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Login</CardTitle>
+          <CardTitle>Hotel Management Login</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="hotelId">Hotel ID</Label>
+              <Input
+                id="hotelId"
+                type="text"
+                placeholder="hotel_001 or hotel_002"
+                value={hotelId}
+                onChange={(e) => setHotelId(e.target.value)}
+                required
+              />
+              <p className="text-xs text-gray-500">Enter hotel_001 or hotel_002</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                placeholder="you@example.com" 
+              <Input
+                id="email"
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                placeholder="Enter your password" 
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
               />
             </div>
-            <CardFooter className="px-0 flex gap-2 w-full">
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Logging in...
-                  </>
-                ) : (
-                  "Login"
-                )}
-              </Button>
-              {/* Signup disabled */}
-            </CardFooter>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
+            </Button>
           </form>
         </CardContent>
       </Card>
     </div>
   )
 }
-
-

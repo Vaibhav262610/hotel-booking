@@ -5,6 +5,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import AuthSessionProvider from "@/components/auth-session-provider"
 import { ThemeContextProvider } from "@/components/theme-context"
+import { HotelProvider } from "@/lib/hotel-context"
 import { Toaster } from "@/components/ui/toaster"
 import { SessionWarning } from "@/components/session-warning"
 
@@ -28,13 +29,15 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
         <AuthSessionProvider>
-          <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
-            <ThemeContextProvider>
-              {children}
-              <SessionWarning />
-              <Toaster />
-            </ThemeContextProvider>
-          </ThemeProvider>
+          <HotelProvider>
+            <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
+              <ThemeContextProvider>
+                {children}
+                <SessionWarning />
+                <Toaster />
+              </ThemeContextProvider>
+            </ThemeProvider>
+          </HotelProvider>
         </AuthSessionProvider>
       </body>
     </html>

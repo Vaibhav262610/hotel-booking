@@ -1,15 +1,11 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { supabaseAuth } from "@/lib/supabase"
+import { supabaseAuth, getHotelDatabase } from "@/lib/hotel-database"
 
 export const authOptions = {
   session: { 
     strategy: "jwt" as const,
-    maxAge: 7 * 24 * 60 * 60, // 7 days (in seconds)
-    updateAge: 60 * 60, // 1 hour (in seconds) - refresh token every hour
-  },
-  jwt: {
-    maxAge: 7 * 24 * 60 * 60, // 7 days (in seconds)
+    maxAge: 7 * 24 * 60 * 60, // 7 days
   },
   pages: {
     signIn: '/login',
@@ -21,46 +17,61 @@ export const authOptions = {
       name: "Password",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
+        hotelId: { label: "Hotel ID", type: "text" }
       },
       async authorize(credentials) {
         try {
           const email = credentials?.email as string
           const password = credentials?.password as string
+          const hotelId = credentials?.hotelId as string
           
           if (!email || !password) {
             throw new Error("Missing email or password")
           }
 
-          // 1) Verify password via Supabase
-          const { data: verifyData, error: verifyError } = await supabaseAuth.auth.signInWithPassword({
+          if (!hotelId) {
+            throw new Error("Hotel ID is required")
+          }
+
+          // Validate hotel ID
+          const validHotels = ['hotel_001', 'hotel_002']
+          if (!validHotels.includes(hotelId)) {
+            throw new Error(`Invalid hotel ID: ${hotelId}`)
+          }
+
+          // Get hotel-specific database client
+          const { client } = getHotelDatabase(hotelId)
+
+          // Verify password via hotel-specific Supabase
+          const { data: verifyData, error: verifyError } = await client.auth.signInWithPassword({
             email,
             password
           })
           
           if (verifyError) {
-            throw new Error(verifyError.message || "Invalid password")
+            throw new Error(verifyError.message || "Invalid credentials")
           }
           
           if (!verifyData?.user) {
-            throw new Error("Invalid password")
+            throw new Error("Invalid credentials")
           }
 
           const authUser = verifyData.user
 
-          // 2) Ensure staff profile exists (auth_user_id linked)
-          const { data: staff, error: staffError } = await supabaseAuth
+          // Get staff profile from hotel-specific database
+          const { data: staff, error: staffError } = await client
             .from("staff")
             .select("id, role, email, name")
             .eq("auth_user_id", authUser.id)
             .single()
 
           if (staffError) {
-            throw new Error(`No profile found. Please sign up first. Error: ${staffError.message}`)
+            throw new Error(`No profile found in ${hotelId}. Please contact administrator.`)
           }
           
           if (!staff) {
-            throw new Error("No profile found. Please sign up first.")
+            throw new Error(`No profile found in ${hotelId}. Please contact administrator.`)
           }
 
           return {
@@ -68,7 +79,8 @@ export const authOptions = {
             email: authUser.email,
             name: staff.name || authUser.user_metadata?.name || undefined,
             role: staff.role,
-            staffId: staff.id
+            staffId: staff.id,
+            hotelId: hotelId
           } as any
         } catch (error) {
           console.error('NextAuth authorize error:', error)
@@ -79,22 +91,14 @@ export const authOptions = {
   ],
   callbacks: {
     async jwt({ token, user }: any) {
-      // Initial sign in
       if (user) {
         token.sub = user.id
         token.email = user.email
         token.name = user.name
         token.role = user.role
         token.staffId = user.staffId
-        token.iat = Math.floor(Date.now() / 1000) // Issued at
-        token.exp = Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // Expires in 7 days
+        token.hotelId = user.hotelId
       }
-      
-      // Check if token is expired
-      if (token.exp && Date.now() >= token.exp * 1000) {
-        throw new Error('Token expired')
-      }
-      
       return token
     },
     async session({ session, token }: any) {
@@ -102,6 +106,7 @@ export const authOptions = {
         session.user.id = token.sub
         session.user.role = token.role
         session.user.staffId = token.staffId
+        session.user.hotelId = token.hotelId
       }
       return session
     }
@@ -110,5 +115,3 @@ export const authOptions = {
 
 const handler = NextAuth(authOptions as any)
 export { handler as GET, handler as POST }
-
-
